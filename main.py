@@ -12,6 +12,9 @@ from portfolio import aggregate_results
 
 app = Flask(__name__)
 
+LOOKBACK_DAYS = 60
+RECENT_TABLE_DAYS = 30
+
 top50_rows = []
 strategy_results = []
 portfolio_summary = {}
@@ -91,6 +94,30 @@ def sort_rows(rows, sort_key="rank", direction="asc"):
     return sorted(rows, key=key_func, reverse=reverse)
 
 
+def prepare_price_df(df: pd.DataFrame):
+    if df is None or df.empty:
+        return None
+
+    work_df = df.copy()
+
+    if isinstance(work_df.columns, pd.MultiIndex):
+        work_df.columns = work_df.columns.get_level_values(0)
+
+    required = ["Open", "High", "Low", "Close", "Volume"]
+    missing = [c for c in required if c not in work_df.columns]
+    if missing:
+        print(f"[prepare_price_df] 缺少欄位: {missing}")
+        return None
+
+    work_df = work_df.dropna(subset=required).copy()
+    if work_df.empty:
+        return None
+
+    work_df["upper_20"] = work_df["High"].rolling(20).max()
+    work_df["lower_10"] = work_df["Low"].rolling(10).min()
+    return work_df
+
+
 def init_data():
     global top50_rows, strategy_results, portfolio_summary
 
@@ -135,9 +162,8 @@ def init_data():
                 row["error"] = "無法從 yfinance 取得資料"
                 continue
 
-            result = adturtle_simple(symbol, df)
+            result = adturtle_simple(symbol, df, lookback_days=LOOKBACK_DAYS)
 
-            # 首頁訊號用 latest_signal（當日 BUY / SELL / HOLD）
             row["signal"] = result.latest_signal
             row["last_price"] = normalize_signed_zero(result.last_price, 2)
             row["return_pct"] = normalize_signed_zero(result.return_pct, 2)
@@ -176,53 +202,31 @@ def get_stock_name(symbol: str) -> str:
     return symbol
 
 
-def build_stock_chart_and_signals(symbol, stock_name, df):
-    if df is None or df.empty:
+def build_stock_chart_and_signals(symbol, stock_name, df, strategy_signal_rows=None, lookback_days=LOOKBACK_DAYS):
+    full_df = prepare_price_df(df)
+    if full_df is None or full_df.empty:
         return None, []
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    required = ["Open", "High", "Low", "Close", "Volume"]
-    for col in required:
-        if col not in df.columns:
-            return None, []
-
-    chart_df = df.tail(60).copy()
-
-    chart_df["upper_20"] = chart_df["High"].rolling(20).max()
-    chart_df["lower_10"] = chart_df["Low"].rolling(10).min()
-
-    chart_df["buy_signal"] = chart_df["Close"] > chart_df["upper_20"].shift(1)
-    chart_df["sell_signal"] = chart_df["Close"] < chart_df["lower_10"].shift(1)
-
-    signal_rows = []
-    for idx, row in chart_df.iterrows():
-        signal_type = None
-        channel_price = None
-
-        prev_upper = chart_df["upper_20"].shift(1).loc[idx]
-        prev_lower = chart_df["lower_10"].shift(1).loc[idx]
-
-        if pd.notna(row["buy_signal"]) and row["buy_signal"]:
-            signal_type = "BUY"
-            channel_price = prev_upper
-        elif pd.notna(row["sell_signal"]) and row["sell_signal"]:
-            signal_type = "SELL"
-            channel_price = prev_lower
-
-        if signal_type:
-            signal_rows.append({
-                "date": idx.strftime("%Y-%m-%d"),
-                "signal": signal_type,
-                "close": round(float(row["Close"]), 2),
-                "channel_price": round(float(channel_price), 2) if pd.notna(channel_price) else None,
-                "volume": int(row["Volume"]),
-            })
-
-    signal_rows.sort(key=lambda x: x["date"], reverse=True)
-
+    chart_df = full_df.tail(lookback_days).copy()
     x_labels = chart_df.index.strftime("%Y-%m-%d")
+    chart_dates = set(x_labels)
+
+    strategy_signal_rows = strategy_signal_rows or []
+    filtered_signal_rows = [
+        row for row in strategy_signal_rows
+        if str(row.get("date", "")) in chart_dates
+    ]
+    filtered_signal_rows.sort(key=lambda x: x["date"], reverse=True)
+
+    buy_dates = {row["date"] for row in filtered_signal_rows if row.get("signal") == "BUY"}
+    sell_dates = {row["date"] for row in filtered_signal_rows if row.get("signal") == "SELL"}
+
+    chart_date_series = pd.Series(chart_df.index.strftime("%Y-%m-%d"), index=chart_df.index)
+    buy_df = chart_df[chart_date_series.isin(buy_dates)]
+    sell_df = chart_df[chart_date_series.isin(sell_dates)]
+
+    start_date = x_labels[0] if len(x_labels) > 0 else "-"
+    end_date = x_labels[-1] if len(x_labels) > 0 else "-"
 
     fig = make_subplots(
         rows=2,
@@ -230,7 +234,10 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
         shared_xaxes=True,
         vertical_spacing=0.04,
         row_heights=[0.72, 0.28],
-        subplot_titles=(f"{stock_name} {symbol} - 最近 60 個交易日通道股價與信號", "成交量")
+        subplot_titles=(
+            f"{stock_name} {symbol} - 最近 {lookback_days} 個交易日通道股價與信號（{start_date} ~ {end_date}）",
+            "成交量"
+        )
     )
 
     fig.add_trace(
@@ -241,7 +248,7 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
             low=chart_df["Low"],
             close=chart_df["Close"],
             name="K線",
-            increasing_line_color="#d32f2f",
+            increasing_line_color="#c62828",
             increasing_fillcolor="#ef5350",
             decreasing_line_color="#2e7d32",
             decreasing_fillcolor="#66bb6a"
@@ -255,7 +262,7 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
             y=chart_df["upper_20"],
             mode="lines",
             name="上通道(20)",
-            line=dict(color="#fb8c00", width=1.8, dash="dash")
+            line=dict(color="#607d8b", width=1.8, dash="dash")
         ),
         row=1, col=1
     )
@@ -266,13 +273,10 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
             y=chart_df["lower_10"],
             mode="lines",
             name="下通道(10)",
-            line=dict(color="#00897b", width=1.8, dash="dash")
+            line=dict(color="#6b8f71", width=1.8, dash="dash")
         ),
         row=1, col=1
     )
-
-    buy_df = chart_df[chart_df["buy_signal"]]
-    sell_df = chart_df[chart_df["sell_signal"]]
 
     fig.add_trace(
         go.Scatter(
@@ -283,7 +287,7 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
             marker=dict(
                 symbol="triangle-up",
                 size=13,
-                color="#ffa726",
+                color="#fb8c00",
                 line=dict(width=1.2, color="#ef6c00")
             )
         ),
@@ -299,15 +303,15 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
             marker=dict(
                 symbol="triangle-down",
                 size=13,
-                color="#3949ab",
-                line=dict(width=1.2, color="#1a237e")
+                color="#1565c0",
+                line=dict(width=1.2, color="#0d47a1")
             )
         ),
         row=1, col=1
     )
 
     vol_colors = [
-        "#d32f2f" if c >= o else "#2e7d32"
+        "#c62828" if c >= o else "#2e7d32"
         for o, c in zip(chart_df["Open"], chart_df["Close"])
     ]
 
@@ -340,7 +344,7 @@ def build_stock_chart_and_signals(symbol, stock_name, df):
     fig.update_yaxes(title_text="Volume", row=2, col=1)
 
     chart_html = to_html(fig, full_html=False, include_plotlyjs="cdn")
-    return chart_html, signal_rows
+    return chart_html, filtered_signal_rows
 
 
 @app.route("/")
@@ -374,6 +378,7 @@ def index():
         sort_key=sort_key,
         direction=direction,
         sort_urls=sort_urls,
+        lookback_days=LOOKBACK_DAYS,
     )
 
 
@@ -387,19 +392,25 @@ def stock_detail(symbol):
     signal_rows = []
 
     if df is not None and not df.empty:
-        result = adturtle_simple(symbol, df)
+        clean_df = prepare_price_df(df)
+        if clean_df is not None and not clean_df.empty:
+            result = adturtle_simple(symbol, clean_df, lookback_days=LOOKBACK_DAYS)
 
-        recent_30_df = df.tail(30).copy().reset_index()
+            recent_30_df = clean_df.tail(RECENT_TABLE_DAYS).copy().reset_index()
+            if "Date" in recent_30_df.columns:
+                recent_30_df = recent_30_df.sort_values(by="Date", ascending=False)
+            else:
+                recent_30_df = recent_30_df.sort_index(ascending=False)
+            recent_30 = recent_30_df.to_dict("records")
 
-        if "Date" in recent_30_df.columns:
-            recent_30_df = recent_30_df.sort_values(by="Date", ascending=False)
-        else:
-            recent_30_df = recent_30_df.sort_index(ascending=False)
-
-        recent_30 = recent_30_df.to_dict("records")
-
-        chart_html, _ = build_stock_chart_and_signals(symbol, stock_name, df)
-        signal_rows = result.signal_rows if result and result.signal_rows else []
+            raw_signal_rows = result.signal_rows if result and result.signal_rows else []
+            chart_html, signal_rows = build_stock_chart_and_signals(
+                symbol,
+                stock_name,
+                clean_df,
+                strategy_signal_rows=raw_signal_rows,
+                lookback_days=LOOKBACK_DAYS,
+            )
 
     return render_template(
         "stock_detail.html",
@@ -409,6 +420,7 @@ def stock_detail(symbol):
         recent_30=recent_30,
         chart_html=chart_html,
         signal_rows=signal_rows,
+        lookback_days=LOOKBACK_DAYS,
     )
 
 

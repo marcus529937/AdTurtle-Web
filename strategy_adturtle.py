@@ -18,7 +18,7 @@ class TradeRecord:
 class StrategyResult:
     symbol: str
     signal: str = "PENDING"
-    latest_signal: str = "HOLD"   # 首頁概覽優先顯示當天 BUY/SELL，否則 HOLD
+    latest_signal: str = "HOLD"
     last_price: float | None = None
 
     entry_price: float | None = None
@@ -46,7 +46,13 @@ class StrategyResult:
     error: str | None = None
 
 
-def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower_period: int = 10) -> StrategyResult:
+def adturtle_simple(
+    symbol: str,
+    df: pd.DataFrame,
+    upper_period: int = 20,
+    lower_period: int = 10,
+    lookback_days: int = 60
+) -> StrategyResult:
     result = StrategyResult(symbol=symbol)
 
     try:
@@ -67,17 +73,26 @@ def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower
             result.error = f"缺少欄位: {missing}"
             return result
 
-        work_df = df.copy().dropna(subset=["Close", "High", "Low", "Volume"])
-        min_required = max(upper_period, lower_period) + 1
+        raw_df = df.copy().dropna(subset=["Close", "High", "Low", "Volume"])
 
-        if len(work_df) < min_required:
+        min_required = max(upper_period, lower_period) + 1
+        if len(raw_df) < min_required:
             result.signal = "NO_DATA"
             result.latest_signal = "NO_DATA"
             result.error = f"資料筆數不足（至少需要 {min_required} 筆）"
             return result
 
+        buffer_days = upper_period + 5
+        need_rows = max(lookback_days + buffer_days, min_required)
+        work_df = raw_df.tail(need_rows).copy()
+
         work_df["upper_20"] = work_df["High"].rolling(upper_period).max()
         work_df["lower_10"] = work_df["Low"].rolling(lower_period).min()
+
+        rows = work_df.reset_index()
+        date_col = rows.columns[0]
+
+        calc_start_idx = max(1, len(rows) - lookback_days)
 
         cash = result.initial_capital
         shares = 0
@@ -85,13 +100,9 @@ def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower
         current_trade = None
         realized_pnl_total = 0.0
         signal_rows = []
-
-        rows = work_df.reset_index()
-        date_col = rows.columns[0]
-
         latest_signal = "HOLD"
 
-        for i in range(1, len(rows)):
+        for i in range(calc_start_idx, len(rows)):
             today = rows.iloc[i]
             yesterday = rows.iloc[i - 1]
 
@@ -105,7 +116,6 @@ def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower
             if pd.isna(prev_upper) or pd.isna(prev_lower):
                 continue
 
-            # BUY
             if (not in_position) and (today_close > float(prev_upper)):
                 buy_price = today_close
                 buy_shares = int(cash // buy_price)
@@ -135,7 +145,6 @@ def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower
                         "pnl": None,
                     })
 
-            # SELL
             elif in_position and (today_close < float(prev_lower)):
                 sell_price = today_close
                 sell_shares = shares
@@ -217,7 +226,7 @@ def adturtle_simple(symbol: str, df: pd.DataFrame, upper_period: int = 20, lower
         result.win_rate = round(win_rate, 2)
 
         signal_rows.sort(key=lambda x: x["date"], reverse=True)
-        result.signal_rows = signal_rows[-60:] if len(signal_rows) > 60 else signal_rows
+        result.signal_rows = signal_rows
 
     except Exception as e:
         result.signal = "ERROR"

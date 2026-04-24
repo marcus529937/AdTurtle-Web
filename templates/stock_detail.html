@@ -6,9 +6,13 @@
   <a href="/" style="color:#00695c;">← 回首頁</a>
 </div>
 
-<h1 style="font-size:20px; color:#1a1a2e; margin-bottom:16px;">
+<h1 style="font-size:20px; color:#1a1a2e; margin-bottom:8px;">
   {{ stock_name }} {{ symbol }} — 策略詳情
 </h1>
+
+<div style="color:#616161; font-size:13px; margin-bottom:16px;">
+  目前頁面以最近 {{ lookback_days }} 個交易日進行圖表、訊號與損益同步顯示
+</div>
 
 {% if result %}
 <div class="summary-bar" style="margin-bottom:20px;">
@@ -58,28 +62,28 @@
   </div>
 
   <div>
-    <span>已實現損益</span><br>
+    <span>已實現損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if result.realized_pnl is not none and result.realized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(result.realized_pnl if result.realized_pnl is not none else 0) }}
     </strong>
   </div>
 
   <div>
-    <span>未實現損益</span><br>
+    <span>未實現損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if result.unrealized_pnl is not none and result.unrealized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(result.unrealized_pnl if result.unrealized_pnl is not none else 0) }}
     </strong>
   </div>
 
   <div>
-    <span>累積總損益</span><br>
+    <span>總損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if result.total_pnl is not none and result.total_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(result.total_pnl if result.total_pnl is not none else 0) }}
     </strong>
   </div>
 
   <div>
-    <span>累積報酬率</span><br>
+    <span>報酬率<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if result.return_pct is not none and result.return_pct >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {% if result.return_pct is not none %}
         {{ result.return_pct }}%
@@ -126,7 +130,9 @@
 <div style="color:#9e9e9e; margin-bottom:20px;">無法取得策略資料</div>
 {% endif %}
 
-<h2 style="font-size:16px; margin-bottom:10px; color:#1a1a2e;">最近 60 個交易日圖表</h2>
+<h2 style="font-size:16px; margin-bottom:10px; color:#1a1a2e;">
+  最近交易日 {{ lookback_days }} 天圖表
+</h2>
 {% if chart_html %}
 <div style="background:#fff; border-radius:8px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:24px;">
   {{ chart_html | safe }}
@@ -135,7 +141,13 @@
 <div style="color:#9e9e9e; margin-bottom:24px;">無法產生圖表</div>
 {% endif %}
 
-<h2 style="font-size:16px; margin-bottom:10px; color:#1a1a2e;">最近 60 個交易日 BUY / SELL 訊號</h2>
+<h2 style="font-size:16px; margin-bottom:10px; color:#1a1a2e;">
+  最近交易日 {{ lookback_days }} 天 BUY / SELL 訊號
+</h2>
+<div style="color:#616161; font-size:13px; margin-bottom:10px;">
+  下表僅顯示與上方圖表相同日期範圍內的策略訊號
+</div>
+
 {% if signal_rows %}
 <table style="margin-bottom:24px;">
   <thead>
@@ -154,7 +166,7 @@
     <tr>
       <td>{{ s["date"] }}</td>
       <td>
-        <strong style="color:{% if s['signal'] == 'BUY' %}#ffa726{% else %}#3949ab{% endif %}">
+        <strong style="color:{% if s['signal'] == 'BUY' %}#fb8c00{% else %}#1565c0{% endif %}">
           {{ s["signal"] }}
         </strong>
       </td>
@@ -188,7 +200,7 @@
   </tbody>
 </table>
 {% else %}
-<div style="color:#9e9e9e; margin-bottom:24px;">最近 60 個交易日內無 BUY / SELL 訊號</div>
+<div style="color:#9e9e9e; margin-bottom:24px;">最近交易日 {{ lookback_days }} 天內無 BUY / SELL 訊號</div>
 {% endif %}
 
 <h2 style="font-size:16px; margin-bottom:10px; color:#1a1a2e;">近 30 日 OHLCV</h2>

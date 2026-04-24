@@ -2,44 +2,79 @@
 {% block title %}台股市值前 50{% endblock %}
 {% block content %}
 
-<h1 style="margin-bottom:14px; font-size:20px; color:#1a1a2e;">台股市值前 50 — Turtle 策略概覽</h1>
+<h1 style="margin-bottom:8px; font-size:20px; color:#1a1a2e;">
+  台股市值前 50 — 最近交易日 {{ lookback_days }} 天策略概覽
+</h1>
+
+<div style="color:#616161; font-size:13px; margin-bottom:14px;">
+  首頁統計、個股訊號、損益與報酬率皆以最近 {{ lookback_days }} 個交易日計算
+</div>
 
 {% if summary %}
 <div class="summary-bar">
-  <div><span>成功分析</span><br><strong>{{ summary.stock_count }} 檔</strong></div>
-  <div><span>BUY 訊號</span><br><strong style="color:#c62828;">{{ summary.buy_count }}</strong></div>
-  <div><span>SELL 訊號</span><br><strong style="color:#3949ab;">{{ summary.sell_count }}</strong></div>
-  <div><span>HOLD 訊號</span><br><strong>{{ summary.hold_count }}</strong></div>
-  <div><span>持倉中</span><br><strong>{{ summary.in_position_count }}</strong></div>
-  <div><span>空手</span><br><strong>{{ summary.cash_position_count }}</strong></div>
-
-  <div><span>總投入資金</span><br><strong>{{ "{:,.0f}".format(summary.total_initial_capital) }}</strong></div>
+  <div>
+    <span>成功分析</span><br>
+    <strong>{{ summary.stock_count }} 檔</strong>
+  </div>
 
   <div>
-    <span>總已實現損益</span><br>
+    <span>BUY 訊號</span><br>
+    <strong style="color:#c62828;">{{ summary.buy_count }}</strong>
+  </div>
+
+  <div>
+    <span>SELL 訊號</span><br>
+    <strong style="color:#3949ab;">{{ summary.sell_count }}</strong>
+  </div>
+
+  <div>
+    <span>HOLD 訊號</span><br>
+    <strong>{{ summary.hold_count }}</strong>
+  </div>
+
+  <div>
+    <span>持倉中</span><br>
+    <strong>{{ summary.in_position_count }}</strong>
+  </div>
+
+  <div>
+    <span>空手</span><br>
+    <strong>{{ summary.cash_position_count }}</strong>
+  </div>
+
+  <div>
+    <span>總投入資金</span><br>
+    <strong>{{ "{:,.0f}".format(summary.total_initial_capital) }}</strong>
+  </div>
+
+  <div>
+    <span>總已實現損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if summary.total_realized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(summary.total_realized_pnl) }}
     </strong>
   </div>
 
   <div>
-    <span>總未實現損益</span><br>
+    <span>總未實現損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if summary.total_unrealized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(summary.total_unrealized_pnl) }}
     </strong>
   </div>
 
   <div>
-    <span>總損益</span><br>
+    <span>總損益<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if summary.total_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ "{:,.0f}".format(summary.total_pnl) }}
     </strong>
   </div>
 
-  <div><span>總資產</span><br><strong>{{ "{:,.0f}".format(summary.total_equity) }}</strong></div>
+  <div>
+    <span>總資產</span><br>
+    <strong>{{ "{:,.0f}".format(summary.total_equity) }}</strong>
+  </div>
 
   <div>
-    <span>整體累積報酬率</span><br>
+    <span>整體報酬率<br><small style="color:#757575;">交易日 {{ lookback_days }} 天</small></span><br>
     <strong style="color:{% if summary.return_pct >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
       {{ summary.return_pct }}%
     </strong>
@@ -63,7 +98,7 @@
       <th><a href="{{ sort_urls.weight_pct }}" style="color:#fff; text-decoration:none;">市值占比</a></th>
       <th><a href="{{ sort_urls.last_price }}" style="color:#fff; text-decoration:none;">最新價</a></th>
       <th><a href="{{ sort_urls.signal }}" style="color:#fff; text-decoration:none;">訊號</a></th>
-      <th><a href="{{ sort_urls.return_pct }}" style="color:#fff; text-decoration:none;">累積報酬率</a></th>
+      <th><a href="{{ sort_urls.return_pct }}" style="color:#fff; text-decoration:none;">報酬率</a></th>
       <th><a href="{{ sort_urls.total_pnl }}" style="color:#fff; text-decoration:none;">總損益</a></th>
     </tr>
   </thead>
