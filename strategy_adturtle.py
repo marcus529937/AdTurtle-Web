@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 import pandas as pd
 
 
@@ -7,8 +8,8 @@ class TradeRecord:
     entry_date: str
     entry_price: float
     shares: int
-    exit_date: str | None = None
-    exit_price: float | None = None
+    exit_date: Optional[str] = None
+    exit_price: Optional[float] = None
     realized_pnl: float = 0.0
     return_pct: float = 0.0
     status: str = "OPEN"
@@ -19,12 +20,12 @@ class StrategyResult:
     symbol: str
     signal: str = "PENDING"
     latest_signal: str = "HOLD"
-    last_price: float | None = None
+    last_price: Optional[float] = None
 
-    entry_price: float | None = None
-    stop_loss: float | None = None
-    upper_band: float | None = None
-    lower_band: float | None = None
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    upper_band: Optional[float] = None
+    lower_band: Optional[float] = None
 
     initial_capital: float = 1_000_000.0
     shares_held: int = 0
@@ -43,7 +44,7 @@ class StrategyResult:
 
     trade_log: list[TradeRecord] = field(default_factory=list)
     signal_rows: list[dict] = field(default_factory=list)
-    error: str | None = None
+    error: Optional[str] = None
 
 
 def adturtle_simple(
@@ -62,32 +63,38 @@ def adturtle_simple(
             result.error = "DataFrame 為空"
             return result
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        work_df = df.copy()
+
+        if isinstance(work_df.columns, pd.MultiIndex):
+            work_df.columns = work_df.columns.get_level_values(0)
 
         required = ["Close", "High", "Low", "Volume"]
-        missing = [c for c in required if c not in df.columns]
+        missing = [c for c in required if c not in work_df.columns]
         if missing:
             result.signal = "ERROR"
             result.latest_signal = "ERROR"
             result.error = f"缺少欄位: {missing}"
             return result
 
-        raw_df = df.copy().dropna(subset=["Close", "High", "Low", "Volume"])
+        work_df = work_df.dropna(subset=required).copy()
+        work_df = work_df.sort_index()
 
         min_required = max(upper_period, lower_period) + 1
-        if len(raw_df) < min_required:
+        if len(work_df) < min_required:
             result.signal = "NO_DATA"
             result.latest_signal = "NO_DATA"
             result.error = f"資料筆數不足（至少需要 {min_required} 筆）"
             return result
 
-        buffer_days = upper_period + 5
+        buffer_days = max(upper_period, lower_period) + 5
         need_rows = max(lookback_days + buffer_days, min_required)
-        work_df = raw_df.tail(need_rows).copy()
+        work_df = work_df.tail(need_rows).copy()
 
-        work_df["upper_20"] = work_df["High"].rolling(upper_period).max()
-        work_df["lower_10"] = work_df["Low"].rolling(lower_period).min()
+        upper_col = f"upper_{upper_period}"
+        lower_col = f"lower_{lower_period}"
+
+        work_df.loc[:, upper_col] = work_df["High"].rolling(upper_period).max()
+        work_df.loc[:, lower_col] = work_df["Low"].rolling(lower_period).min()
 
         rows = work_df.reset_index()
         date_col = rows.columns[0]
@@ -110,8 +117,8 @@ def adturtle_simple(
             today_close = float(today["Close"])
             today_volume = int(today["Volume"])
 
-            prev_upper = yesterday["upper_20"]
-            prev_lower = yesterday["lower_10"]
+            prev_upper = yesterday[upper_col]
+            prev_lower = yesterday[lower_col]
 
             if pd.isna(prev_upper) or pd.isna(prev_lower):
                 continue
@@ -181,8 +188,8 @@ def adturtle_simple(
         prev_row = work_df.iloc[-2]
 
         last_close = float(last_row["Close"])
-        prev_upper = float(prev_row["upper_20"]) if pd.notna(prev_row["upper_20"]) else None
-        prev_lower = float(prev_row["lower_10"]) if pd.notna(prev_row["lower_10"]) else None
+        prev_upper = float(prev_row[upper_col]) if pd.notna(prev_row[upper_col]) else None
+        prev_lower = float(prev_row[lower_col]) if pd.notna(prev_row[lower_col]) else None
 
         unrealized_pnl = 0.0
         current_entry_price = None
@@ -199,11 +206,7 @@ def adturtle_simple(
         win_trades = [t for t in closed_trades if t.realized_pnl > 0]
         win_rate = (len(win_trades) / len(closed_trades) * 100) if closed_trades else 0.0
 
-        if latest_signal in ("BUY", "SELL"):
-            result.signal = latest_signal
-        else:
-            result.signal = "HOLD"
-
+        result.signal = latest_signal if latest_signal in ("BUY", "SELL") else "HOLD"
         result.latest_signal = latest_signal
         result.last_price = round(last_close, 2)
         result.entry_price = round(current_entry_price, 2) if current_entry_price is not None else None
@@ -225,7 +228,6 @@ def adturtle_simple(
         result.win_trades = len(win_trades)
         result.win_rate = round(win_rate, 2)
 
-        signal_rows.sort(key=lambda x: x["date"], reverse=True)
         result.signal_rows = signal_rows
 
     except Exception as e:
