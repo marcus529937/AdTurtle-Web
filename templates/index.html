@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}台股市值前 50{% endblock %}
+{% block content %}
+
+<h1 style="margin-bottom:14px; font-size:20px; color:#1a1a2e;">台股市值前 50 — Turtle 策略概覽</h1>
+
+{% if summary %}
+<div class="summary-bar">
+  <div><span>成功分析</span><br><strong>{{ summary.stock_count }} 檔</strong></div>
+  <div><span>BUY 訊號</span><br><strong style="color:#c62828;">{{ summary.buy_count }}</strong></div>
+  <div><span>SELL 訊號</span><br><strong style="color:#3949ab;">{{ summary.sell_count }}</strong></div>
+  <div><span>HOLD 訊號</span><br><strong>{{ summary.hold_count }}</strong></div>
+  <div><span>持倉中</span><br><strong>{{ summary.in_position_count }}</strong></div>
+  <div><span>空手</span><br><strong>{{ summary.cash_position_count }}</strong></div>
+
+  <div><span>總投入資金</span><br><strong>{{ "{:,.0f}".format(summary.total_initial_capital) }}</strong></div>
+
+  <div>
+    <span>總已實現損益</span><br>
+    <strong style="color:{% if summary.total_realized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+      {{ "{:,.0f}".format(summary.total_realized_pnl) }}
+    </strong>
+  </div>
+
+  <div>
+    <span>總未實現損益</span><br>
+    <strong style="color:{% if summary.total_unrealized_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+      {{ "{:,.0f}".format(summary.total_unrealized_pnl) }}
+    </strong>
+  </div>
+
+  <div>
+    <span>總損益</span><br>
+    <strong style="color:{% if summary.total_pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+      {{ "{:,.0f}".format(summary.total_pnl) }}
+    </strong>
+  </div>
+
+  <div><span>總資產</span><br><strong>{{ "{:,.0f}".format(summary.total_equity) }}</strong></div>
+
+  <div>
+    <span>整體累積報酬率</span><br>
+    <strong style="color:{% if summary.return_pct >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+      {{ summary.return_pct }}%
+    </strong>
+  </div>
+
+  <div>
+    <span>總勝率</span><br>
+    <strong style="color:{% if summary.total_win_rate >= 50 %}#c62828{% else %}#2e7d32{% endif %}">
+      {{ summary.total_win_rate }}%
+    </strong>
+  </div>
+</div>
+{% endif %}
+
+<table>
+  <thead>
+    <tr>
+      <th><a href="{{ sort_urls.rank }}" style="color:#fff; text-decoration:none;">#</a></th>
+      <th><a href="{{ sort_urls.code }}" style="color:#fff; text-decoration:none;">代碼</a></th>
+      <th><a href="{{ sort_urls.name }}" style="color:#fff; text-decoration:none;">名稱</a></th>
+      <th><a href="{{ sort_urls.weight_pct }}" style="color:#fff; text-decoration:none;">市值占比</a></th>
+      <th><a href="{{ sort_urls.last_price }}" style="color:#fff; text-decoration:none;">最新價</a></th>
+      <th><a href="{{ sort_urls.signal }}" style="color:#fff; text-decoration:none;">訊號</a></th>
+      <th><a href="{{ sort_urls.return_pct }}" style="color:#fff; text-decoration:none;">累積報酬率</a></th>
+      <th><a href="{{ sort_urls.total_pnl }}" style="color:#fff; text-decoration:none;">總損益</a></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      <td>{{ row.rank }}</td>
+      <td><a class="stock-link" href="/stock/{{ row.code }}">{{ row.code }}</a></td>
+      <td>{{ row.name }}</td>
+      <td>{{ row.weight_pct if row.weight_pct else "-" }}</td>
+
+      <td>
+        {% if row.last_price is not none %}
+          {{ row.last_price }}
+        {% else %}
+          <span style="color:#9e9e9e;">-</span>
+        {% endif %}
+      </td>
+
+      <td>
+        <span class="signal-{{ row.signal }}">{{ row.signal }}</span>
+        {% if row.error %}
+          <div class="err-detail">{{ row.error }}</div>
+        {% endif %}
+      </td>
+
+      <td>
+        {% if row.return_pct is not none %}
+          {% set rp = 0 if row.return_pct == -0.0 or row.return_pct == -0 else row.return_pct %}
+          <span style="color:{% if rp >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+            {{ rp }}%
+          </span>
+        {% else %}
+          <span style="color:#9e9e9e;">-</span>
+        {% endif %}
+      </td>
+
+      <td>
+        {% if row.total_pnl is not none %}
+          {% set pnl = 0 if row.total_pnl == -0 else row.total_pnl %}
+          <span style="color:{% if pnl >= 0 %}#c62828{% else %}#2e7d32{% endif %}">
+            {{ "{:,.0f}".format(pnl) }}
+          </span>
+        {% else %}
+          <span style="color:#9e9e9e;">-</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}
