@@ -77,16 +77,13 @@ def _should_use_cache(symbol: str, use_cache: bool) -> bool:
 
     phase = _market_phase(now)
 
-    # 開盤前：直接用今天或之前的快取
     if phase == "preopen":
         return True
 
-    # 盤中：如果 10 分鐘內抓過就直接用快取，避免過度重抓
     if phase == "open":
         age_seconds = (now - mtime).total_seconds()
         return age_seconds < 600
 
-    # 收盤後：如果今天收盤後已抓過一次，就不要再抓第二次
     if phase == "closed":
         if _is_same_day(now, mtime) and mtime.time() >= MARKET_CLOSE:
             return True
@@ -95,7 +92,7 @@ def _should_use_cache(symbol: str, use_cache: bool) -> bool:
     return False
 
 
-def get_price_history(ticker: str, period: str = "6mo", use_cache: bool = True):
+def get_price_history(ticker: str, period: str = "max", use_cache: bool = True):
     symbol = f"{ticker}.TW"
 
     if _should_use_cache(symbol, use_cache):
@@ -108,7 +105,7 @@ def get_price_history(ticker: str, period: str = "6mo", use_cache: bool = True):
             with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
                 df = yf.download(
                     symbol,
-                    period=period,
+                    period="max",
                     interval="1d",
                     auto_adjust=False,
                     progress=False,
