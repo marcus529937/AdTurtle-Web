@@ -355,7 +355,6 @@ def _build_price_and_signals(
 
     return price_view, buy_markers, sell_markers
 
-
 def _build_mpf_style():
     market_colors = mpf.make_marketcolors(
         up=COLOR_UP,
@@ -391,6 +390,14 @@ def _build_mpf_style():
     )
 
 
+def _has_valid_data(series: pd.Series) -> bool:
+    """避免把完全空的 Series 丟進 mplfinance.addplot，導致 zero-size array 錯誤。"""
+    if series is None:
+        return False
+    # 至少要有一個非 NaN 的資料點
+    return series.dropna().size > 0
+
+
 def save_backtest_figure(
     symbol: str,
     lookback_days: int,
@@ -415,12 +422,49 @@ def save_backtest_figure(
         print(f"⚠️ Cannot plot: {e}")
         return
 
-    addplots = [
-        mpf.make_addplot(price_view["upper_band"], color=COLOR_BUY, width=1.3),
-        mpf.make_addplot(price_view["lower_band"], color=COLOR_SELL, width=1.3),
-        mpf.make_addplot(buy_markers, type="scatter", marker="^", markersize=90, color=COLOR_BUY),
-        mpf.make_addplot(sell_markers, type="scatter", marker="v", markersize=90, color=COLOR_SELL),
-    ]
+    addplots = []
+
+    # channel 線（上軌 / 下軌）
+    if _has_valid_data(price_view["upper_band"]):
+        addplots.append(
+            mpf.make_addplot(
+                price_view["upper_band"],
+                color=COLOR_BUY,
+                width=1.3,
+            )
+        )
+
+    if _has_valid_data(price_view["lower_band"]):
+        addplots.append(
+            mpf.make_addplot(
+                price_view["lower_band"],
+                color=COLOR_SELL,
+                width=1.3,
+            )
+        )
+
+    # BUY / SELL 訊號標記
+    if _has_valid_data(buy_markers):
+        addplots.append(
+            mpf.make_addplot(
+                buy_markers,
+                type="scatter",
+                marker="^",
+                markersize=90,
+                color=COLOR_BUY,
+            )
+        )
+
+    if _has_valid_data(sell_markers):
+        addplots.append(
+            mpf.make_addplot(
+                sell_markers,
+                type="scatter",
+                marker="v",
+                markersize=90,
+                color=COLOR_SELL,
+            )
+        )
 
     mpf_style = _build_mpf_style()
     png_path = OUTPUT_DIR / f"{symbol}_backtest_{lookback_days}d.png"
@@ -430,7 +474,7 @@ def save_backtest_figure(
         type="candle",
         style=mpf_style,
         volume=False,
-        addplot=addplots,
+        addplot=addplots if addplots else None,
         figsize=(14, 7),
         returnfig=True,
         show_nontrading=False,
@@ -445,13 +489,39 @@ def save_backtest_figure(
     for spine in ax.spines.values():
         spine.set_color(COLOR_GRID)
 
+    # legend 部分照舊（即使某種標記這次沒被畫出來也沒關係）
     legend_handles = [
         Line2D([0], [0], color=COLOR_BUY, lw=1.8, label="upper_band"),
         Line2D([0], [0], color=COLOR_SELL, lw=1.8, label="lower_band"),
-        Line2D([0], [0], marker="^", color="w", markerfacecolor=COLOR_BUY, markeredgecolor=COLOR_BUY, markersize=8, linestyle="None", label="BUY"),
-        Line2D([0], [0], marker="v", color="w", markerfacecolor=COLOR_SELL, markeredgecolor=COLOR_SELL, markersize=8, linestyle="None", label="SELL"),
+        Line2D(
+            [0],
+            [0],
+            marker="^",
+            color="w",
+            markerfacecolor=COLOR_BUY,
+            markeredgecolor=COLOR_BUY,
+            markersize=8,
+            linestyle="None",
+            label="BUY",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="v",
+            color="w",
+            markerfacecolor=COLOR_SELL,
+            markeredgecolor=COLOR_SELL,
+            markersize=8,
+            linestyle="None",
+            label="SELL",
+        ),
     ]
-    legend = ax.legend(handles=legend_handles, loc="upper left", frameon=True, fontsize=9)
+    legend = ax.legend(
+        handles=legend_handles,
+        loc="upper left",
+        frameon=True,
+        fontsize=9,
+    )
     legend.get_frame().set_facecolor(COLOR_BG)
     legend.get_frame().set_edgecolor(COLOR_GRID)
     legend.get_frame().set_alpha(0.95)
@@ -459,7 +529,6 @@ def save_backtest_figure(
     fig.savefig(png_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Backtest PNG  : {png_path}")
-
 
 def main() -> None:
     if len(sys.argv) < 2:
